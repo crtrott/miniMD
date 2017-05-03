@@ -118,6 +118,7 @@ void ForceLJ::compute(Atom &atom, Neighbor &neighbor, Comm &comm, int me)
   type = atom.type;
 
   neighbors = neighbor.neighbors;
+  neighbors_vov = neighbor.neighbors_vov;
   numneigh = neighbor.numneigh;
 
   // clear force on own and ghost atoms
@@ -294,14 +295,14 @@ void ForceLJ::compute_halfneigh_threaded(Atom &atom, Neighbor &neighbor, int me)
 
   if(ntypes>MAX_STACK_TYPES) {
     if(EVFLAG)
-      Kokkos::parallel_reduce(Kokkos::RangePolicy<TagComputeHalfNeighThread<1,GHOST_NEWTON,0> >(0,nlocal), *this , t_eng_virial);
+      Kokkos::parallel_reduce("ForceLJ::compute_half_ev",Kokkos::RangePolicy<TagComputeHalfNeighThread<1,GHOST_NEWTON,0> >(0,nlocal), *this , t_eng_virial);
     else
-      Kokkos::parallel_for(Kokkos::RangePolicy<TagComputeHalfNeighThread<0,GHOST_NEWTON,0> >(0,nlocal), *this );
+      Kokkos::parallel_for("ForceLJ::compute_half",Kokkos::RangePolicy<TagComputeHalfNeighThread<0,GHOST_NEWTON,0> >(0,nlocal), *this );
   } else {
     if(EVFLAG)
-      Kokkos::parallel_reduce(Kokkos::RangePolicy<TagComputeHalfNeighThread<1,GHOST_NEWTON,1> >(0,nlocal), *this , t_eng_virial);
+      Kokkos::parallel_reduce("ForceLJ::compute_half_ev",Kokkos::RangePolicy<TagComputeHalfNeighThread<1,GHOST_NEWTON,1> >(0,nlocal), *this , t_eng_virial);
     else
-      Kokkos::parallel_for(Kokkos::RangePolicy<TagComputeHalfNeighThread<0,GHOST_NEWTON,1> >(0,nlocal), *this );
+      Kokkos::parallel_for("ForceLJ::compute_half",Kokkos::RangePolicy<TagComputeHalfNeighThread<0,GHOST_NEWTON,1> >(0,nlocal), *this );
   }
   eng_vdwl += t_eng_virial.eng;
   virial += t_eng_virial.virial;
@@ -322,14 +323,14 @@ void ForceLJ::compute_fullneigh(Atom &atom, Neighbor &neighbor, int me)
 
   if(ntypes>MAX_STACK_TYPES) {
     if(EVFLAG)
-      Kokkos::parallel_reduce(Kokkos::RangePolicy<TagComputeFullNeigh<1,0> >(0,nlocal), *this , t_eng_virial);
+      Kokkos::parallel_reduce("ForceLJ::compute_full_ev",Kokkos::RangePolicy<TagComputeFullNeigh<1,0> >(0,nlocal), *this , t_eng_virial);
     else
-      Kokkos::parallel_for(Kokkos::RangePolicy<TagComputeFullNeigh<0,0> >(0,nlocal), *this );
+      Kokkos::parallel_for("ForceLJ::compute_full",Kokkos::RangePolicy<TagComputeFullNeigh<0,0> >(0,nlocal), *this );
   } else {
     if(EVFLAG)
-      Kokkos::parallel_reduce(Kokkos::RangePolicy<TagComputeFullNeigh<1,1> >(0,nlocal), *this , t_eng_virial);
+      Kokkos::parallel_reduce("ForceLJ::compute_full_ev",Kokkos::RangePolicy<TagComputeFullNeigh<1,1> >(0,nlocal), *this , t_eng_virial);
     else
-      Kokkos::parallel_for(Kokkos::RangePolicy<TagComputeFullNeigh<0,1> >(0,nlocal), *this );
+      Kokkos::parallel_for("ForceLJ::compute_full",Kokkos::RangePolicy<TagComputeFullNeigh<0,1> >(0,nlocal), *this );
   }
   t_eng_virial.eng *= 4.0;
   t_eng_virial.virial *= 0.5;
@@ -356,12 +357,13 @@ void ForceLJ::operator() (TagComputeHalfNeighThread<EVFLAG,GHOST_NEWTON,STACK_PA
   const MMD_float ztmp = x(i,2);
   const int type_i = type[i];
 
+  int_1d_view_type neighs_i = neighbors_vov(i);
   MMD_float fix = 0.0;
   MMD_float fiy = 0.0;
   MMD_float fiz = 0.0;
 
   for(int k = 0; k < numneighs; k++) {
-    const MMD_int j = neighbors(i,k);
+    const MMD_int j = neighs_i(k);
     const MMD_float delx = xtmp - x(j,0);
     const MMD_float dely = ytmp - x(j,1);
     const MMD_float delz = ztmp - x(j,2);
@@ -414,6 +416,7 @@ void ForceLJ::operator() (TagComputeFullNeigh<EVFLAG,STACK_PARAMS> , const int& 
   const MMD_float ytmp = x(i,1);
   const MMD_float ztmp = x(i,2);
   const int type_i = type[i];
+  int_1d_view_type neighs_i = neighbors_vov(i);
 
   MMD_float fix = 0;
   MMD_float fiy = 0;
@@ -427,7 +430,7 @@ void ForceLJ::operator() (TagComputeFullNeigh<EVFLAG,STACK_PARAMS> , const int& 
   #pragma simd reduction (+: fix,fiy,fiz,eng_virial)
 #endif
   for(int k = 0; k < numneighs; k++) {
-    const MMD_int j = neighbors(i,k);
+    const MMD_int j = neighs_i(k);
     const MMD_float delx = xtmp - x(j,0);
     const MMD_float dely = ytmp - x(j,1);
     const MMD_float delz = ztmp - x(j,2);

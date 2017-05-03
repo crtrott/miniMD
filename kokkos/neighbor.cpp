@@ -52,7 +52,7 @@ Neighbor::Neighbor(int ntypes_)
   cutneighsq = float_1d_view_type("Neighbor::cutneighsq",ntypes*ntypes);
   new_maxneighs = int_1d_view_type("Neighbor::new_maxneighs",1);
   h_new_maxneighs = Kokkos::create_mirror_view(new_maxneighs);
-  team_neigh_build = 0;
+  team_neigh_build = 1;
 
   shared_mem_size = 0;
 }
@@ -62,7 +62,9 @@ Neighbor::~Neighbor()
 }
 
 void Neighbor::dealloc() {
-
+  for(int i=0; i<nmax; i++)
+    neighbors_vov(i) = int_1d_view_type();
+  neighbors_vov = t_neighlist_vov();
 }
 /* binned neighbor list construction with full Newton's 3rd law
    every pair stored exactly once by some processor
@@ -80,6 +82,7 @@ void Neighbor::build(Atom &atom)
 
     numneigh = int_1d_view_type("Neighbor::numneigh",nmax);
     neighbors = int_2d_view_type("Neighbor::neighbors",nmax , maxneighs);
+    neighbors_vov = t_neighlist_vov("Neighbor::neighbors_vov_outer",nmax);
   }
 
   /* bin local & ghost atoms */
@@ -95,47 +98,31 @@ void Neighbor::build(Atom &atom)
 
 
   /* repeat calculations if running out of memory */
-  while(resize) {
-    Kokkos::fence();
     Kokkos::deep_copy(new_maxneighs , maxneighs);
     resize = 0;
 
     /* loop over each atom, storing neighbors */
     /* flat parallelism particle based, and team based with a bin per team */
     if(ntypes<MAX_STACK_TYPES) {
-      if(!team_neigh_build) {
-        if(halfneigh)
-          Kokkos::parallel_for(Kokkos::RangePolicy<TagNeighborBuild<1,1> >(0,nlocal), *this);
-        else
-          Kokkos::parallel_for(Kokkos::RangePolicy<TagNeighborBuild<0,1> >(0,nlocal), *this);
-      } else {
         int team_size = team_neigh_build;
         int vector_length = 32;
         while(vector_length>atoms_per_bin) vector_length/=2;
         shared_mem_size = (2*team_size +2*nextx) * atoms_per_bin * (3*sizeof(float) + 2 * sizeof(int));
         if(halfneigh)
-          Kokkos::parallel_for(Kokkos::TeamPolicy<TagNeighborBuild<1,1> >((mbinx-2*nextx)*(mbiny-2*nexty)*(mbinz-2*nextz)/team_size,team_size,vector_length), *this);
+          Kokkos::parallel_for("Neighbor::Count",Kokkos::TeamPolicy<TagNeighborBuildCount<1,1> >((mbinx-2*nextx)*(mbiny-2*nexty)*(mbinz-2*nextz)/team_size,team_size,vector_length), *this);
         else
-          Kokkos::parallel_for(Kokkos::TeamPolicy<TagNeighborBuild<0,1> >((mbinx-2*nextx)*(mbiny-2*nexty)*(mbinz-2*nextz)/team_size,team_size,vector_length), *this);
+          Kokkos::parallel_for("Neighbor::Count",Kokkos::TeamPolicy<TagNeighborBuildCount<0,1> >((mbinx-2*nextx)*(mbiny-2*nexty)*(mbinz-2*nextz)/team_size,team_size,vector_length), *this);
         shared_mem_size = 0;
-      }
     } else {
-      if(!team_neigh_build) {
-        if(halfneigh)
-          Kokkos::parallel_for(Kokkos::RangePolicy<TagNeighborBuild<1,0> >(0,nlocal), *this);
-        else
-          Kokkos::parallel_for(Kokkos::RangePolicy<TagNeighborBuild<0,0> >(0,nlocal), *this);
-      } else {
         int team_size = team_neigh_build;
         int vector_length = 32;
         while(vector_length>atoms_per_bin) vector_length/=2;
         shared_mem_size = (2*team_size +2*nextx) * atoms_per_bin * (3*sizeof(float) + 2 * sizeof(int));
         if(halfneigh)
-          Kokkos::parallel_for(Kokkos::TeamPolicy<TagNeighborBuild<1,0> >((mbinx-2*nextx)*(mbiny-2*nexty)*(mbinz-2*nextz)/team_size,team_size,vector_length), *this);
+          Kokkos::parallel_for("Neighbor::Count",Kokkos::TeamPolicy<TagNeighborBuildCount<1,0> >((mbinx-2*nextx)*(mbiny-2*nexty)*(mbinz-2*nextz)/team_size,team_size,vector_length), *this);
         else
-          Kokkos::parallel_for(Kokkos::TeamPolicy<TagNeighborBuild<0,0> >((mbinx-2*nextx)*(mbiny-2*nexty)*(mbinz-2*nextz)/team_size,team_size,vector_length), *this);
+          Kokkos::parallel_for("Neighbor::Count",Kokkos::TeamPolicy<TagNeighborBuildCount<0,0> >((mbinx-2*nextx)*(mbiny-2*nexty)*(mbinz-2*nextz)/team_size,team_size,vector_length), *this);
         shared_mem_size = 0;
-      }
     }
 
     Kokkos::deep_copy(h_new_maxneighs,new_maxneighs);
@@ -144,7 +131,33 @@ void Neighbor::build(Atom &atom)
       maxneighs = h_new_maxneighs(0) * 1.2;
       neighbors = int_2d_view_type("Neighbor::neighbors", nmax , maxneighs);
     }
-  }
+    int_1d_host_view_type h_numneigh = Kokkos::create_mirror_view(numneigh);
+    Kokkos::deep_copy(h_numneigh,numneigh);
+    for(int i=0; i<nmax; i++) {
+      neighbors_vov(i) = Kokkos::View<int*>("Neighbors::neighbors_vov",numneigh(i));
+    }
+    if(ntypes<MAX_STACK_TYPES) {
+        int team_size = team_neigh_build;
+        int vector_length = 32;
+        while(vector_length>atoms_per_bin) vector_length/=2;
+        shared_mem_size = (2*team_size +2*nextx) * atoms_per_bin * (3*sizeof(float) + 2 * sizeof(int));
+        if(halfneigh)
+          Kokkos::parallel_for("Neighbor::Fill",Kokkos::TeamPolicy<TagNeighborBuildFill<1,1> >((mbinx-2*nextx)*(mbiny-2*nexty)*(mbinz-2*nextz)/team_size,team_size,vector_length), *this);
+        else
+          Kokkos::parallel_for("Neighbor::Fill",Kokkos::TeamPolicy<TagNeighborBuildFill<0,1> >((mbinx-2*nextx)*(mbiny-2*nexty)*(mbinz-2*nextz)/team_size,team_size,vector_length), *this);
+        shared_mem_size = 0;
+    } else {
+        int team_size = team_neigh_build;
+        int vector_length = 32;
+        while(vector_length>atoms_per_bin) vector_length/=2;
+        shared_mem_size = (2*team_size +2*nextx) * atoms_per_bin * (3*sizeof(float) + 2 * sizeof(int));
+        if(halfneigh)
+          Kokkos::parallel_for("Neighbor::Fill",Kokkos::TeamPolicy<TagNeighborBuildFill<1,0> >((mbinx-2*nextx)*(mbiny-2*nexty)*(mbinz-2*nextz)/team_size,team_size,vector_length), *this);
+        else
+          Kokkos::parallel_for("Neighbor::Fill",Kokkos::TeamPolicy<TagNeighborBuildFill<0,0> >((mbinx-2*nextx)*(mbiny-2*nexty)*(mbinz-2*nextz)/team_size,team_size,vector_length), *this);
+        shared_mem_size = 0;
+    }
+
 }
 
 template<int HALF_NEIGH,bool STACK_ARRAYS>
@@ -215,7 +228,7 @@ void Neighbor::operator() (TagNeighborBuild<HALF_NEIGH,STACK_ARRAYS> , const typ
 
 template<int HALF_NEIGH, bool STACK_ARRAYS>
 KOKKOS_INLINE_FUNCTION
-void Neighbor::operator() (TagNeighborBuild<HALF_NEIGH,STACK_ARRAYS> , const typename Kokkos::TeamPolicy<TagNeighborBuild<HALF_NEIGH,STACK_ARRAYS> >::member_type& team_member) const {
+void Neighbor::operator() (TagNeighborBuildCount<HALF_NEIGH,STACK_ARRAYS> , const typename Kokkos::TeamPolicy<TagNeighborBuildCount<HALF_NEIGH,STACK_ARRAYS> >::member_type& team_member) const {
 
   const int atoms_per_bin = bins.dimension_1();
 
@@ -299,7 +312,6 @@ void Neighbor::operator() (TagNeighborBuild<HALF_NEIGH,STACK_ARRAYS> , const typ
       // If i-j distance smaller than cutoff add it to the neighbor list
       // Only add the atom if neighborlist is large enough, but always keep counting
       if(rsq <= (STACK_ARRAYS?cutneighsq_stack[itype*ntypes+jtype]:cutneighsq[itype*ntypes+jtype])) {
-        if(n<maxneighs) neighbors(i,n) = j;
         n++;
       }
 
@@ -374,7 +386,6 @@ void Neighbor::operator() (TagNeighborBuild<HALF_NEIGH,STACK_ARRAYS> , const typ
             // If i-j distance smaller than cutoff add it to the neighbor list
             // Only add the atom if neighborlist is large enough, but always keep counting
             if(rsq <= (STACK_ARRAYS?cutneighsq_stack[itype*ntypes+jtype]:cutneighsq[itype*ntypes+jtype])) {
-              if(n<maxneighs) neighbors(i,n) = j;
               n++;
             }
           }
@@ -386,8 +397,188 @@ void Neighbor::operator() (TagNeighborBuild<HALF_NEIGH,STACK_ARRAYS> , const typ
         // Set regrow flag if neccessary
         if(n >= maxneighs) {
           if(n >= new_maxneighs(0)) new_maxneighs(0) = n;
-        }
+        }        
+      }
+    });
 
+    // Wait for all threads to finish with current x row in shared memory
+    team_member.team_barrier();
+
+  }
+}
+
+
+template<int HALF_NEIGH, bool STACK_ARRAYS>
+KOKKOS_INLINE_FUNCTION
+void Neighbor::operator() (TagNeighborBuildFill<HALF_NEIGH,STACK_ARRAYS> , const typename Kokkos::TeamPolicy<TagNeighborBuildFill<HALF_NEIGH,STACK_ARRAYS> >::member_type& team_member) const {
+
+  const int atoms_per_bin = bins.dimension_1();
+
+  // Each thread gets one bin
+  const int binoffset = team_member.league_rank()*team_member.team_size() + team_member.team_rank();
+
+  // Calculate the 3D index of the bin of this thread. Threads in a team own neighboring bins in X directions
+  const int binx = binoffset%(mbinx-2*nextx) + nextx;
+  const int biny = (binoffset/(mbinx-2*nextx))%(mbiny-2*nexty) + nexty;
+  const int binz = (binoffset/((mbinx-2*nextx)*(mbiny-2*nexty)))%(mbinz-2*nextz) + nextz;
+  const int ibin = binz*mbiny*mbinx + biny*mbinx + binx;
+
+  // Local bin index within the team (just the team_rank();
+  const int MY_BIN = team_member.team_rank();
+
+  // Create shared allocations for the owned bins
+  t_shared_2d_int this_type(team_member.team_shmem(),team_member.team_size(),atoms_per_bin);
+  t_shared_2d_int this_id(team_member.team_shmem(),team_member.team_size(),atoms_per_bin);
+  t_shared_pos    this_x(team_member.team_shmem(),atoms_per_bin,team_member.team_size());
+  // Create shared allocations for one x row in the common neighbor stencil of the owned bins of the team
+  t_shared_2d_int other_type(team_member.team_shmem(),team_member.team_size()+2*nextx,atoms_per_bin);
+  t_shared_2d_int other_id(team_member.team_shmem(),team_member.team_size()+2*nextx,atoms_per_bin);
+  t_shared_pos    other_x(team_member.team_shmem(),atoms_per_bin,team_member.team_size()+2*nextx);
+
+  // Get the count of atoms in the owned bin
+  int bincount_current = ibin >=bincount.dimension_0()?0:bincount[ibin];
+
+  // Load atoms in the owned bin. Each Thread loads one bin
+  Kokkos::parallel_for(Kokkos::ThreadVectorRange(team_member,bincount_current), [&] (const int& ii) {
+    const int i = bins(ibin,ii);
+    this_x(ii,MY_BIN, 0) = x(i, 0);
+    this_x(ii,MY_BIN, 1) = x(i, 1);
+    this_x(ii,MY_BIN, 2) = x(i, 2);
+    this_type(MY_BIN,ii) = type(i);
+    this_id(MY_BIN,ii) = i;
+  });
+
+  // No barrier necessary since only vector loops follow
+  //team_member.team_barrier();
+
+  // Calculate interactions with atoms in owned bin. Split work over vector lanes
+  Kokkos::parallel_for(Kokkos::ThreadVectorRange(team_member,bincount_current), [&] (const int& ii) {
+    const MMD_float xtmp = this_x(ii,MY_BIN,0);
+    const MMD_float ytmp = this_x(ii,MY_BIN,1);
+    const MMD_float ztmp = this_x(ii,MY_BIN,2);
+    const int itype = this_type(MY_BIN,ii);
+    const int i = this_id(MY_BIN,ii);
+
+    // Only calculate neighborlist if the atom is NOT a ghost atom in the MPI domain
+    if(i<nlocal) {
+    int_1d_view_type neighs_i = neighbors_vov(i);
+
+    // The local neighbor count for this atom
+    int n = 0;
+
+    // Get the reference to the neighbor list of atom i
+    // (a very slimmed down variant of subview which is faster to generate and only has two members)
+    //const AtomNeighbors neighbors_i = neigh_list.get_neighbors(i);
+
+    // Loop over atoms in owned bin for i,j check
+    #pragma unroll 4
+    for(int m = 0; m < bincount_current; m++) {
+
+      const int j = this_id(MY_BIN,m);
+      const int jtype = this_type(MY_BIN,m);
+
+      // Exclude invalid atoms for HALF_NEIGH / GhostNewton etc.
+      if((j == i) ||
+         (HALF_NEIGH && !ghost_newton && (j < i))  ||
+         (HALF_NEIGH && ghost_newton &&
+            ((j < i) ||
+            ((j >= nlocal) && ((x(j, 2) < ztmp) || (x(j, 2) == ztmp && x(j, 1) < ytmp) ||
+              (x(j, 2) == ztmp && x(j, 1)  == ytmp && x(j, 0) < xtmp)))))
+        ) continue;
+
+      // Calculate i-j distance
+      const MMD_float delx = xtmp - this_x(m,MY_BIN,0);
+      const MMD_float dely = ytmp - this_x(m,MY_BIN,1);
+      const MMD_float delz = ztmp - this_x(m,MY_BIN,2);
+      const MMD_float rsq = delx * delx + dely * dely + delz * delz;
+
+      // If i-j distance smaller than cutoff add it to the neighbor list
+      // Only add the atom if neighborlist is large enough, but always keep counting
+      if(rsq <= (STACK_ARRAYS?cutneighsq_stack[itype*ntypes+jtype]:cutneighsq[itype*ntypes+jtype])) {
+        neighs_i(n) = j;
+        n++;
+      }
+
+    }
+    // Store the number of neighbors
+    numneigh(i) = n;
+    }
+  });
+  const int zstart = (HALF_NEIGH && ghost_newton)?0:-nextz;
+  // Loop over stencil in Y and Z direction
+  for (int zz = zstart; zz <= nextz; zz++)
+    for (int yy = -nexty; yy <= nexty; yy++) {
+
+      // Load the x-row of the neighbor stencil of the owned bins into shared memory
+      Kokkos::parallel_for(Kokkos::TeamThreadRange(team_member,team_member.team_size()+2*nextx), [&] (const int xx) {
+        const int team_start_bin = ibin-team_member.team_rank();
+        const int jbin = team_start_bin + zz*mbiny*mbinx + yy*mbinx + xx - nextx;
+        const int j_bincount_current = (jbin>=bincount.dimension_0()?0:bincount[jbin]);
+
+        Kokkos::parallel_for(Kokkos::ThreadVectorRange(team_member,j_bincount_current), [&] (const int& jj) {
+          const int j = bins(jbin,jj);
+          other_x(jj,xx,0) = x(j, 0);
+          other_x(jj,xx,1) = x(j, 1);
+          other_x(jj,xx,2) = x(j, 2);
+          other_type(xx,jj) = type(j);
+          other_id(xx,jj) = j;
+        });
+      });
+      // Wait for all threads to finish filling shared memory with current x row of neighbor bins
+      team_member.team_barrier();
+
+    // Vector Loop over atoms in the owned bin of this thread
+    Kokkos::parallel_for(Kokkos::ThreadVectorRange(team_member,bincount_current), [&] (const int& ii) {
+      const MMD_float xtmp = this_x(ii,MY_BIN,0);
+      const MMD_float ytmp = this_x(ii,MY_BIN,1);
+      const MMD_float ztmp = this_x(ii,MY_BIN,2);
+      const int itype = this_type(MY_BIN,ii);
+      const int i = this_id(MY_BIN,ii);
+
+      // Only calculate neighborlist if the atom is NOT a ghost atom in the MPI domain
+      if(i<nlocal) {
+        int_1d_view_type neighs_i = neighbors_vov(i);
+
+        // Load the neighbor count from previous iteration over the stencil
+        int n = numneigh(i);
+
+        // Loop over neighbor bins in X directions which are in shared memory
+        for (int xx = 0; xx <= 2*nextx; xx++) {
+          // Exclude the central bin in the stencil which is the owned bin and was done previously
+          if(zz==0 && yy==0 && xx==nextx) continue;
+
+          // Exclude bins not part of half neigh stencil
+          if(HALF_NEIGH && ghost_newton && (zz == 0 && ( yy < 0 || (yy == 0 && xx < nextx)))) continue;
+          // What is the current neighbor bin of this threads owned bin
+          const int jbin = team_member.team_rank() + xx;
+          // Get the atom count in that bin
+          const int j_bincount_current = jbin>=bincount.dimension_0()?0:bincount[ibin+zz*mbiny*mbinx + yy*mbinx + xx - nextx];
+
+          // Loop over the neighbor bin
+          #pragma unroll 8
+          for(int m = 0; m < j_bincount_current; m++) {
+            const int j = other_id(jbin,m);
+            const int jtype = other_type(jbin,m);
+
+            if(HALF_NEIGH && !ghost_newton && (j < i)) continue;
+
+            // Calculate i-j distance
+            const MMD_float delx = xtmp - other_x(m,jbin,0);
+            const MMD_float dely = ytmp - other_x(m,jbin,1);
+            const MMD_float delz = ztmp - other_x(m,jbin,2);
+            const MMD_float rsq = delx * delx + dely * dely + delz * delz;
+
+            // If i-j distance smaller than cutoff add it to the neighbor list
+            // Only add the atom if neighborlist is large enough, but always keep counting
+            if(rsq <= (STACK_ARRAYS?cutneighsq_stack[itype*ntypes+jtype]:cutneighsq[itype*ntypes+jtype])) {
+              neighs_i(n) = j;
+              n++;
+            }
+          }
+
+        }
+        // Store this atoms count
+        numneigh(i) = n;
       }
     });
 
@@ -420,7 +611,7 @@ void Neighbor::binatoms(Atom &atom, int count)
 
     Kokkos::fence();
     /* count aotms in each bin */
-    Kokkos::parallel_reduce(Kokkos::RangePolicy<TagNeighborBinning>(0,nall), *this, resize);
+    Kokkos::parallel_reduce("Neighbor:binning",Kokkos::RangePolicy<TagNeighborBinning>(0,nall), *this, resize);
 
     if(resize) {
       atoms_per_bin *= 2;
@@ -429,7 +620,7 @@ void Neighbor::binatoms(Atom &atom, int count)
   }
 
   Kokkos::deep_copy(bin_list,-1);
-  Kokkos::parallel_scan(Kokkos::RangePolicy<TagNeighborBinning>(0,mbins), *this);
+  Kokkos::parallel_scan("Neighbor::binning_scan",Kokkos::RangePolicy<TagNeighborBinning>(0,mbins), *this);
 }
 
 

@@ -44,6 +44,12 @@ class Neighbor
     struct TagNeighborBinning {};
     template<int HALF_NEIGH,bool STACK_ARRAYS>
     struct TagNeighborBuild {};
+    
+    template<int HALF_NEIGH,bool STACK_ARRAYS>
+    struct TagNeighborBuildCount {};
+    template<int HALF_NEIGH,bool STACK_ARRAYS>
+    struct TagNeighborBuildFill {};
+
 
     int every;                       // re-neighbor every this often
     int nbinx, nbiny, nbinz;         // # of global bins
@@ -55,6 +61,7 @@ class Neighbor
 
     int_1d_view_type numneigh;                   // # of neighbors for each atom
     int_2d_view_type neighbors;                  // array of neighbors of each atom
+    t_neighlist_vov neighbors_vov;
     int maxneighs;				   // max number of neighbors per atom
     int halfneigh;
     int team_neigh_build;
@@ -94,8 +101,14 @@ class Neighbor
 
     template<int HALF_NEIGH, bool STACK_ARRAYS>
     KOKKOS_INLINE_FUNCTION
-    void operator() (TagNeighborBuild<HALF_NEIGH,STACK_ARRAYS> ,
-                     const typename Kokkos::TeamPolicy<TagNeighborBuild<HALF_NEIGH,STACK_ARRAYS> >::member_type&) const;
+    void operator() (TagNeighborBuildCount<HALF_NEIGH,STACK_ARRAYS> ,
+                     const typename Kokkos::TeamPolicy<TagNeighborBuildCount<HALF_NEIGH,STACK_ARRAYS> >::member_type&) const;
+
+
+    template<int HALF_NEIGH, bool STACK_ARRAYS>
+    KOKKOS_INLINE_FUNCTION
+    void operator() (TagNeighborBuildFill<HALF_NEIGH,STACK_ARRAYS> ,
+                     const typename Kokkos::TeamPolicy<TagNeighborBuildFill<HALF_NEIGH,STACK_ARRAYS> >::member_type&) const;
 
     size_t team_shmem_size( int team_size ) const {
       return shared_mem_size;

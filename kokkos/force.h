@@ -76,6 +76,7 @@ class Force
 
     int_1d_const_view_type numneigh;                   // # of neighbors for each atom
     int_2d_const_view_type neighbors;                  // array of neighbors of each atom
+    t_neighlist_vov neighbors_vov;
 
     x_rnd_view_type x;
     x_view_type f;

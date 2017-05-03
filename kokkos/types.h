@@ -126,6 +126,12 @@ typedef Kokkos::View<int*, SharedSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged> 
 typedef Kokkos::View<int**,Kokkos::LayoutLeft,SharedSpace,Kokkos::MemoryUnmanaged> t_shared_2d_int;
 typedef Kokkos::View<float**[3],Kokkos::LayoutLeft,SharedSpace,Kokkos::MemoryUnmanaged> t_shared_pos;
 
+#ifdef KOKKOS_ENABLE_CUDA
+typedef Kokkos::View<Kokkos::View<int*>* , Kokkos::CudaUVMSpace> t_neighlist_vov;
+#else
+typedef Kokkos::View<Kokkos::View<int*>*> t_neighlist_vov;
+#endif
+
 struct eng_virial_type {
   MMD_float eng;
   MMD_float virial;
