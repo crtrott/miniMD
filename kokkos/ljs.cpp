@@ -73,7 +73,7 @@ int main(int argc, char** argv)
   int use_sse = 0;              //setting for SSE variant of miniMD only
   int screen_yaml = 0;          //print yaml output to screen also
   int yaml_output = 0;          //print yaml output
-  int halfneigh = 1;            //1: use half neighborlist; 0: use full neighborlist; -1: use original miniMD version half neighborlist force
+  int halfneigh = 0;            //1: use half neighborlist; 0: use full neighborlist; -1: use original miniMD version half neighborlist force
   int teams = 1;
   int device = 0;
   int ngpu = 1;
@@ -83,7 +83,7 @@ int main(int argc, char** argv)
   int ghost_newton = 1;
   int sort = -1;
   int ntypes = 8;
-  int team_neigh = 0;
+  int team_neigh = 1;
 
   for(int i = 0; i < argc; i++) {
     if((strcmp(argv[i], "-i") == 0) || (strcmp(argv[i], "--input_file") == 0)) {

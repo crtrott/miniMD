@@ -102,7 +102,7 @@ void Atom::addatom(MMD_float x_in, MMD_float y_in, MMD_float z_in,
 
 void Atom::pbc()
 {
-  Kokkos::parallel_for(Kokkos::RangePolicy<TagAtomPBC>(0,nlocal), *this);
+  Kokkos::parallel_for("Atom::pbc",Kokkos::RangePolicy<TagAtomPBC>(0,nlocal), *this);
 }
 
 void Atom::pack_comm(int n, int_1d_view_type list_in, float_1d_view_type buf_in, int* pbc_flags_in)
@@ -112,9 +112,9 @@ void Atom::pack_comm(int n, int_1d_view_type list_in, float_1d_view_type buf_in,
   for(int i = 0; i < 4; i++) pbc_flags[i] = pbc_flags_in[i];
 
   if(pbc_flags[0] == 0) {
-    Kokkos::parallel_for(Kokkos::RangePolicy<TagAtomPackCommNoPBC>(0,n), *this);
+    Kokkos::parallel_for("Comm::pack",Kokkos::RangePolicy<TagAtomPackCommNoPBC>(0,n), *this);
   } else {
-    Kokkos::parallel_for(Kokkos::RangePolicy<TagAtomPackCommPBC>(0,n), *this);
+    Kokkos::parallel_for("Comm::pack",Kokkos::RangePolicy<TagAtomPackCommPBC>(0,n), *this);
   }
 }
 
@@ -122,7 +122,7 @@ void Atom::unpack_comm(int n, int first_in, float_1d_view_type buf_in)
 {
   first = first_in;
   buf = buf_in;
-  Kokkos::parallel_for(Kokkos::RangePolicy<TagAtomUnpackComm>(0,n), *this);
+  Kokkos::parallel_for("Comm::unpack",Kokkos::RangePolicy<TagAtomUnpackComm>(0,n), *this);
 }
 
 void Atom::pack_comm_self(int n, int_1d_view_type list_in, int first_in, int* pbc_flags_in)
@@ -132,9 +132,9 @@ void Atom::pack_comm_self(int n, int_1d_view_type list_in, int first_in, int* pb
   for(int i = 0; i < 4; i++) pbc_flags[i] = pbc_flags_in[i];
 
   if(pbc_flags[0] == 0) {
-    Kokkos::parallel_for(Kokkos::RangePolicy<TagAtomPackCommSelfNoPBC>(0,n), *this);
+    Kokkos::parallel_for("Comm::self",Kokkos::RangePolicy<TagAtomPackCommSelfNoPBC>(0,n), *this);
   } else {
-    Kokkos::parallel_for(Kokkos::RangePolicy<TagAtomPackCommSelfPBC>(0,n), *this);
+    Kokkos::parallel_for("Comm::self",Kokkos::RangePolicy<TagAtomPackCommSelfPBC>(0,n), *this);
   }
 }
 
@@ -190,7 +190,7 @@ void Atom::sort(Neighbor &neighbor)
 
   const int mbins = neighbor.mbins;
 
-  Kokkos::parallel_scan(Kokkos::RangePolicy<TagAtomSort>(0,mbins), *this);
+  Kokkos::parallel_scan("Atom::sort_scan",Kokkos::RangePolicy<TagAtomSort>(0,mbins), *this);
 
   if(copy_size<nmax) {
     x_copy = x_view_type("atom::x_copy",nmax);
@@ -206,7 +206,7 @@ void Atom::sort(Neighbor &neighbor)
   old_v = v;
   old_type = type;
 
-  Kokkos::parallel_for(Kokkos::RangePolicy<TagAtomSort>(0,mbins), *this);
+  Kokkos::parallel_for("Atom::sort_for",Kokkos::RangePolicy<TagAtomSort>(0,mbins), *this);
   Kokkos::fence();
 
   x_view_type x_tmp = x;

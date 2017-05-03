@@ -148,7 +148,7 @@ MMD_float Thermo::temperature(Atom &atom)
   v = atom.v;
   mass = atom.mass;
 
-  Kokkos::parallel_reduce(atom.nlocal, *this, t);
+  Kokkos::parallel_reduce("Thermo::temperature",atom.nlocal, *this, t);
 
   t_act += t;
 

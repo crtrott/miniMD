@@ -271,8 +271,6 @@ int Comm::setup(MMD_float cutneigh, Atom &atom)
 
 void Comm::communicate(Atom &atom)
 {
-  Kokkos::Profiling::pushRegion("Comm::communicate");
-
   int iswap;
   int pbc_flags[4];
   MPI_Request request;
@@ -314,14 +312,12 @@ void Comm::communicate(Atom &atom)
       atom.pack_comm_self(sendnum[iswap], list, firstrecv[iswap], pbc_flags);
   }
 
-  Kokkos::Profiling::popRegion();
 }
 
 /* reverse communication of atom info every timestep */
 
 void Comm::reverse_communicate(Atom &atom)
 {
-  Kokkos::Profiling::pushRegion("Comm::reverse_communicate");
 
   int iswap;
   MPI_Request request;
@@ -361,7 +357,6 @@ void Comm::reverse_communicate(Atom &atom)
     atom.unpack_reverse(sendnum[iswap], list, buf);
   }
 
-  Kokkos::Profiling::popRegion();
 }
 
 /* exchange:
@@ -373,7 +368,6 @@ void Comm::reverse_communicate(Atom &atom)
 
 void Comm::exchange(Atom &atom_)
 {
-  Kokkos::Profiling::pushRegion("exchange");
   atom = atom_;
   int nsend, nrecv, nrecv1, nrecv2, nlocal;
 
@@ -422,7 +416,7 @@ void Comm::exchange(Atom &atom_)
       count.modify<HostType>();
       count.sync<DeviceType>();
 
-      Kokkos::parallel_for(Kokkos::RangePolicy<TagExchangeSendlist>(0,nlocal),*this);
+      Kokkos::parallel_for("Comm::exchange_sendlist",Kokkos::RangePolicy<TagExchangeSendlist>(0,nlocal),*this);
       Kokkos::fence();
 
       count.modify<DeviceType>();
@@ -456,7 +450,7 @@ void Comm::exchange(Atom &atom_)
     }
     Kokkos::deep_copy(exc_copylist,h_exc_copylist);
 
-    Kokkos::parallel_for(Kokkos::RangePolicy<TagExchangePack>(0,count.h_view(0)),*this);
+    Kokkos::parallel_for("Comm::exchange_pack",Kokkos::RangePolicy<TagExchangePack>(0,count.h_view(0)),*this);
 
     atom.nlocal -= count.h_view(0);
     Kokkos::fence();
@@ -510,7 +504,7 @@ void Comm::exchange(Atom &atom_)
 
     nrecv = 0;
 
-    Kokkos::parallel_reduce(Kokkos::RangePolicy<TagExchangeCountRecv>(0,nrecv_atoms),*this,nrecv);
+    Kokkos::parallel_reduce("Comm::exchange_count_recv",Kokkos::RangePolicy<TagExchangeCountRecv>(0,nrecv_atoms),*this,nrecv);
 
     nlocal = atom.nlocal;
 
@@ -524,11 +518,10 @@ void Comm::exchange(Atom &atom_)
     if(atom.nlocal>=atom.nmax)
       atom.growarray();
 
-    Kokkos::parallel_for(Kokkos::RangePolicy<TagExchangeUnpack>(0,nrecv_atoms),*this);
+    Kokkos::parallel_for("Comm::exchange_unpack",Kokkos::RangePolicy<TagExchangeUnpack>(0,nrecv_atoms),*this);
 
   }
   atom_ = atom;
-  Kokkos::Profiling::popRegion();
 }
 
 KOKKOS_INLINE_FUNCTION
@@ -574,7 +567,6 @@ void Comm::operator() (TagExchangeUnpack, const int& i ) const {
 
 void Comm::borders(Atom &atom_)
 {
-  Kokkos::Profiling::pushRegion("Comm::borders");
   atom = atom_;
   int ineed, nsend, nrecv, nfirst, nlast;
   MPI_Request request;
@@ -627,7 +619,7 @@ void Comm::borders(Atom &atom_)
 
       send_count = count.d_view;
 
-      Kokkos::parallel_for(Kokkos::RangePolicy<TagBorderSendlist>(nfirst,nlast),*this);
+      Kokkos::parallel_for("Comm::border_sendlist",Kokkos::RangePolicy<TagBorderSendlist>(nfirst,nlast),*this);
 
       count.modify<DeviceType>();
       count.sync<HostType>();
@@ -642,7 +634,7 @@ void Comm::borders(Atom &atom_)
         count.modify<HostType>();
         count.sync<DeviceType>();
 
-        Kokkos::parallel_for(Kokkos::RangePolicy<TagBorderSendlist>(nfirst,nlast),*this);
+        Kokkos::parallel_for("Comm::border_sendlist",Kokkos::RangePolicy<TagBorderSendlist>(nfirst,nlast),*this);
 
         count.modify<DeviceType>();
         count.sync<HostType>();
@@ -650,7 +642,7 @@ void Comm::borders(Atom &atom_)
 
       if(nsend * 4 > maxsend) growsend(nsend * 4);
 
-      Kokkos::parallel_for(Kokkos::RangePolicy<TagBorderPack>(0,nsend),*this);
+      Kokkos::parallel_for("Comm::border_pack",Kokkos::RangePolicy<TagBorderPack>(0,nsend),*this);
 
       /* swap atoms with other proc
       put incoming ghosts at end of my atom arrays
@@ -690,7 +682,7 @@ void Comm::borders(Atom &atom_)
 
       x = atom.x;
 
-      Kokkos::parallel_for(Kokkos::RangePolicy<TagBorderUnpack>(0,nrecv),*this);
+      Kokkos::parallel_for("Comm::border_unpack",Kokkos::RangePolicy<TagBorderUnpack>(0,nrecv),*this);
 
       /* set all pointers & counters */
 
@@ -722,7 +714,6 @@ void Comm::borders(Atom &atom_)
   if(max2 > maxrecv) growrecv(max2);
   atom_ = atom;
 
-  Kokkos::Profiling::popRegion();
 }
 
 KOKKOS_INLINE_FUNCTION
