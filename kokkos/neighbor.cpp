@@ -134,7 +134,7 @@ void Neighbor::build(Atom &atom)
     int_1d_host_view_type h_numneigh = Kokkos::create_mirror_view(numneigh);
     Kokkos::deep_copy(h_numneigh,numneigh);
     for(int i=0; i<nmax; i++) {
-      neighbors_vov(i) = Kokkos::View<int*>("Neighbors::neighbors_vov",numneigh(i));
+      neighbors_vov(i) = Kokkos::View<int*>("Neighbors::neighbors_vov",h_numneigh(i));
     }
     if(ntypes<MAX_STACK_TYPES) {
         int team_size = team_neigh_build;
