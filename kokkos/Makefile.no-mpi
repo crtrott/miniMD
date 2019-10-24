@@ -3,11 +3,11 @@
 MPI_PATH = ./MPI-Stubs
 
 #Set the path to Kokkos
-KOKKOS_PATH = /home/crtrott/kokkos
+KOKKOS_PATH = ${HOME}/Kokkos/kokkos
 #Set the Devices to compile for
-KOKKOS_DEVICES=OpenMP
+KOKKOS_DEVICES=Cuda
 #Set the Architecture to compiler for
-KOKKOS_ARCH=SNB
+KOKKOS_ARCH=SNB,Volta70
 
 
 CXXFLAGS = -O3 
@@ -15,7 +15,7 @@ LINKFLAGS =
 LIB =
 
 #CXX = ${MPI_PATH}/bin/mpicxx
-CXX = g++
+CXX = ${KOKKOS_PATH}/bin/nvcc_wrapper
 CXXFLAGS += -I${MPI_PATH}
 LIB += ${MPI_PATH}/libmpi_stubs.a
 
