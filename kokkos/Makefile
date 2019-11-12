@@ -4,14 +4,14 @@ MPI_PATH =
 HAVE_MPI = yes
 
 #Set the path to Kokkos
-KOKKOS_PATH = /home/crtrott/kokkos
+KOKKOS_PATH = ${HOME}/Kokkos/kokkos
 #Set the Devices to compile for
 KOKKOS_DEVICES=OpenMP
 #Set the Architecture to compiler for
 KOKKOS_ARCH=SNB
 #Set third party library usage
 KOKKOS_USE_TPL=
-
+KOKKOS_OPTIONS=enable_deprecated_code
 CXXFLAGS = -O3 -g 
 LINKFLAGS = 
 LIB =
