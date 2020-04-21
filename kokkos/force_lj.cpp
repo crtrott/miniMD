@@ -77,7 +77,7 @@ ForceLJ::ForceLJ(int ntypes_)
   Kokkos::deep_copy(d_sigma6,h_sigma6);
   Kokkos::deep_copy(d_sigma,h_sigma);
 
-  nthreads = Kokkos::HostSpace::execution_space::thread_pool_size();
+  nthreads = Kokkos::HostSpace::execution_space().concurrency();
 }
 
 ForceLJ::~ForceLJ() {}

@@ -230,7 +230,7 @@ template<int HALF_NEIGH, bool STACK_ARRAYS>
 KOKKOS_INLINE_FUNCTION
 void Neighbor::operator() (TagNeighborBuildCount<HALF_NEIGH,STACK_ARRAYS> , const typename Kokkos::TeamPolicy<TagNeighborBuildCount<HALF_NEIGH,STACK_ARRAYS> >::member_type& team_member) const {
 
-  const int atoms_per_bin = bins.dimension_1();
+  const int atoms_per_bin = bins.extent(1);
 
   // Each thread gets one bin
   const int binoffset = team_member.league_rank()*team_member.team_size() + team_member.team_rank();
@@ -254,7 +254,7 @@ void Neighbor::operator() (TagNeighborBuildCount<HALF_NEIGH,STACK_ARRAYS> , cons
   t_shared_pos    other_x(team_member.team_shmem(),atoms_per_bin,team_member.team_size()+2*nextx);
 
   // Get the count of atoms in the owned bin
-  int bincount_current = ibin >=bincount.dimension_0()?0:bincount[ibin];
+  int bincount_current = ibin >=bincount.extent(0)?0:bincount[ibin];
 
   // Load atoms in the owned bin. Each Thread loads one bin
   Kokkos::parallel_for(Kokkos::ThreadVectorRange(team_member,bincount_current), [&] (const int& ii) {
@@ -329,7 +329,7 @@ void Neighbor::operator() (TagNeighborBuildCount<HALF_NEIGH,STACK_ARRAYS> , cons
       Kokkos::parallel_for(Kokkos::TeamThreadRange(team_member,team_member.team_size()+2*nextx), [&] (const int xx) {
         const int team_start_bin = ibin-team_member.team_rank();
         const int jbin = team_start_bin + zz*mbiny*mbinx + yy*mbinx + xx - nextx;
-        const int j_bincount_current = (jbin>=bincount.dimension_0()?0:bincount[jbin]);
+        const int j_bincount_current = (jbin>=bincount.extent(0)?0:bincount[jbin]);
 
         Kokkos::parallel_for(Kokkos::ThreadVectorRange(team_member,j_bincount_current), [&] (const int& jj) {
           const int j = bins(jbin,jj);
@@ -367,7 +367,7 @@ void Neighbor::operator() (TagNeighborBuildCount<HALF_NEIGH,STACK_ARRAYS> , cons
           // What is the current neighbor bin of this threads owned bin
           const int jbin = team_member.team_rank() + xx;
           // Get the atom count in that bin
-          const int j_bincount_current = jbin>=bincount.dimension_0()?0:bincount[ibin+zz*mbiny*mbinx + yy*mbinx + xx - nextx];
+          const int j_bincount_current = jbin>=bincount.extent(0)?0:bincount[ibin+zz*mbiny*mbinx + yy*mbinx + xx - nextx];
 
           // Loop over the neighbor bin
           #pragma unroll 8
@@ -412,7 +412,7 @@ template<int HALF_NEIGH, bool STACK_ARRAYS>
 KOKKOS_INLINE_FUNCTION
 void Neighbor::operator() (TagNeighborBuildFill<HALF_NEIGH,STACK_ARRAYS> , const typename Kokkos::TeamPolicy<TagNeighborBuildFill<HALF_NEIGH,STACK_ARRAYS> >::member_type& team_member) const {
 
-  const int atoms_per_bin = bins.dimension_1();
+  const int atoms_per_bin = bins.extent(1);
 
   // Each thread gets one bin
   const int binoffset = team_member.league_rank()*team_member.team_size() + team_member.team_rank();
@@ -436,7 +436,7 @@ void Neighbor::operator() (TagNeighborBuildFill<HALF_NEIGH,STACK_ARRAYS> , const
   t_shared_pos    other_x(team_member.team_shmem(),atoms_per_bin,team_member.team_size()+2*nextx);
 
   // Get the count of atoms in the owned bin
-  int bincount_current = ibin >=bincount.dimension_0()?0:bincount[ibin];
+  int bincount_current = ibin >=bincount.extent(0)?0:bincount[ibin];
 
   // Load atoms in the owned bin. Each Thread loads one bin
   Kokkos::parallel_for(Kokkos::ThreadVectorRange(team_member,bincount_current), [&] (const int& ii) {
@@ -513,7 +513,7 @@ void Neighbor::operator() (TagNeighborBuildFill<HALF_NEIGH,STACK_ARRAYS> , const
       Kokkos::parallel_for(Kokkos::TeamThreadRange(team_member,team_member.team_size()+2*nextx), [&] (const int xx) {
         const int team_start_bin = ibin-team_member.team_rank();
         const int jbin = team_start_bin + zz*mbiny*mbinx + yy*mbinx + xx - nextx;
-        const int j_bincount_current = (jbin>=bincount.dimension_0()?0:bincount[jbin]);
+        const int j_bincount_current = (jbin>=bincount.extent(0)?0:bincount[jbin]);
 
         Kokkos::parallel_for(Kokkos::ThreadVectorRange(team_member,j_bincount_current), [&] (const int& jj) {
           const int j = bins(jbin,jj);
@@ -552,7 +552,7 @@ void Neighbor::operator() (TagNeighborBuildFill<HALF_NEIGH,STACK_ARRAYS> , const
           // What is the current neighbor bin of this threads owned bin
           const int jbin = team_member.team_rank() + xx;
           // Get the atom count in that bin
-          const int j_bincount_current = jbin>=bincount.dimension_0()?0:bincount[ibin+zz*mbiny*mbinx + yy*mbinx + xx - nextx];
+          const int j_bincount_current = jbin>=bincount.extent(0)?0:bincount[ibin+zz*mbiny*mbinx + yy*mbinx + xx - nextx];
 
           // Loop over the neighbor bin
           #pragma unroll 8

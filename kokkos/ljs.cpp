@@ -312,7 +312,7 @@ int main(int argc, char** argv)
   args_kokkos.device_id = device;
 
   Kokkos::initialize(args_kokkos);
-
+  {
   Atom atom(ntypes);
   Neighbor neighbor(ntypes);
   Integrate integrate;
@@ -479,7 +479,7 @@ int main(int argc, char** argv)
     fprintf(stdout, "# " VARIANT_STRING " output ...\n");
     fprintf(stdout, "# Run Settings: \n");
     fprintf(stdout, "\t# MPI processes: %i\n", comm.nprocs);
-    fprintf(stdout, "\t# Host Threads: %i\n", Kokkos::HostSpace::execution_space::thread_pool_size());
+    fprintf(stdout, "\t# Host Threads: %i\n", Kokkos::HostSpace::execution_space().concurrency());
     fprintf(stdout, "\t# Inputfile: %s\n", input_file == 0 ? "in.lj.miniMD" : input_file);
     fprintf(stdout, "\t# Datafile: %s\n", in.datafile ? in.datafile : "None");
     fprintf(stdout, "# Physics Settings: \n");
@@ -561,6 +561,7 @@ int main(int argc, char** argv)
   delete force;
 
   MPI_Barrier(MPI_COMM_WORLD);
+  }
   Kokkos::finalize();
   MPI_Finalize();
   return 0;

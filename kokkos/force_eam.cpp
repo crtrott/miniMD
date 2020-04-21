@@ -66,7 +66,7 @@ ForceEAM::ForceEAM(int ntypes_)
 
   style = FORCEEAM;
 
-  nthreads = Kokkos::HostSpace::execution_space::thread_pool_size();
+  nthreads = Kokkos::HostSpace::execution_space().concurrency();
 }
 
 /* ----------------------------------------------------------------------
@@ -950,14 +950,14 @@ void ForceEAM::communicate(Atom &atom, Comm &comm)
 
     if(comm.sendproc[iswap] != me) {
       if(sizeof(MMD_float) == 4) {
-        MPI_Irecv(comm.buf_recv.ptr_on_device(), comm.comm_recv_size[iswap], MPI_FLOAT,
+        MPI_Irecv(comm.buf_recv.data(), comm.comm_recv_size[iswap], MPI_FLOAT,
                   comm.recvproc[iswap], 0, MPI_COMM_WORLD, &request);
-        MPI_Send(comm.buf_send.ptr_on_device(), comm.comm_send_size[iswap], MPI_FLOAT,
+        MPI_Send(comm.buf_send.data(), comm.comm_send_size[iswap], MPI_FLOAT,
                  comm.sendproc[iswap], 0, MPI_COMM_WORLD);
       } else {
-        MPI_Irecv(comm.buf_recv.ptr_on_device(), comm.comm_recv_size[iswap], MPI_DOUBLE,
+        MPI_Irecv(comm.buf_recv.data(), comm.comm_recv_size[iswap], MPI_DOUBLE,
                   comm.recvproc[iswap], 0, MPI_COMM_WORLD, &request);
-        MPI_Send(comm.buf_send.ptr_on_device(), comm.comm_send_size[iswap], MPI_DOUBLE,
+        MPI_Send(comm.buf_send.data(), comm.comm_send_size[iswap], MPI_DOUBLE,
                  comm.sendproc[iswap], 0, MPI_COMM_WORLD);
       }
 
